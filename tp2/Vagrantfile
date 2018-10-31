@@ -1,0 +1,136 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+# VirtualBox version : 5.2.18
+# Vagrant version : 2.1.5
+# Nfs version : 3
+
+###########################
+# VARIABLES
+###########################
+
+CLIENT = 'gitlab'
+DISK01 = CLIENT + '-data.vdi'
+
+script = './src/scripts/'
+cfg = './src/confs/'
+
+###########################
+# CONFS
+###########################
+
+###
+# Global
+###
+Vagrant.configure("2") do |cluster|
+
+cluster.vm.box = "centos/7"
+
+cluster.vm.provider "virtualbox" do |vb|
+    vb.linked_clone = true
+end
+
+# Files System
+cluster.vm.synced_folder "./vagrant/", "/vagrant", disabled: true
+
+
+###
+# PowerDns
+###
+cluster.vm.define "ns1" do |config|
+    config.vm.hostname = "ns1"
+    config.vm.network :private_network, ip: "172.16.2.3"
+    config.vm.provider "virtualbox" do |vb, override|
+        vb.customize ["modifyvm", :id, "--memory", "256"]
+        vb.customize ["modifyvm", :id, "--cpus", "2"]
+    end
+    config.vm.provision "ansible" do |ansible|
+        ansible.playbook = "site.yml"
+        ansible.compatibility_mode = "2.0"
+        ansible.groups = {
+            "tag_PowerDNS" => ["ns1"],
+            "tag_Common" => ["ns1"]
+        }
+    end
+    config.vm.synced_folder "./vagrant", "/vagrant", type: "nfs"
+end
+
+
+###
+# Gitlab
+###
+cluster.vm.define CLIENT do |config|
+    config.vm.hostname = CLIENT
+
+    # Virtualbox
+    config.vm.provider "virtualbox" do |vb, override|
+        vb.name = CLIENT
+        vb.memory = "4096"
+        vb.cpus = 3
+        vb.linked_clone = true
+        vb.gui = false
+        vb.customize ['createmedium',
+                      'disk',
+                      '--filename', DISK01,
+                      '--variant', 'Fixed',
+                      '--size', 30 * 1024]
+        vb.customize ['storageattach', :id,
+                      '--storagectl', 'IDE',
+                      '--port', 1, '--device', 0,
+                      '--type', 'hdd',
+                      '--medium', DISK01]
+    end
+
+    # network
+    config.vm.network :private_network, ip: "172.16.2.50"
+    # config.vm.network :forwarded_port, host: 5000, guest: 5000
+
+    # Provision
+    config.vm.provision "ansible" do |ansible|
+        ansible.playbook = "site.yml"
+        ansible.compatibility_mode = "2.0"
+        ansible.groups = {
+            "tag_Gitlab" => [CLIENT],
+            "tag_Common" => [CLIENT]
+        }
+    end
+
+    config.vm.synced_folder "./vagrant/", "/vagrant", type: "nfs"
+end
+
+#
+#Runner
+#
+
+RUNNER = CLIENT + '-runner'
+
+cluster.vm.define RUNNER do |config|
+    config.vm.hostname = RUNNER
+
+    # Virtualbox
+    config.vm.provider "virtualbox" do |vb, override|
+        vb.name = RUNNER
+        vb.memory = "2048"
+        vb.cpus = 2
+        vb.linked_clone = true
+        vb.gui = false
+    end
+
+    # network
+    config.vm.network :private_network, ip: "172.16.2.51"
+    config.vm.network :forwarded_port, host: 5000, guest: 5000
+
+    #Provision
+    config.vm.provision "ansible" do |ansible|
+        ansible.playbook = "site.yml"
+        ansible.compatibility_mode = "2.0"
+        ansible.groups = {
+            "tag_GitlabRunner" => [RUNNER],
+            "tag_Common" => [RUNNER]
+        }
+    end
+
+    config.vm.synced_folder "./vagrant/", "/vagrant", type: "nfs"
+end
+
+
+end

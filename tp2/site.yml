@@ -1,0 +1,8 @@
+---
+- hosts: all
+  become: true
+  roles:
+    - { role: gitlab, when: "'tag_Gitlab' in group_names" }
+    - { role: gitlab-runner, when: "'tag_GitlabRunner' in group_names" }
+    - { role: powerdns, when: "'tag_PowerDNS' in group_names" }
+    - { role: common, when: "'tag_Common' in group_names" }

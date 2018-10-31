@@ -1,0 +1,195 @@
+---
+- name: Disable selinux
+  replace:
+    path: /etc/sysconfig/selinux
+    regexp: 'SELINUX=enforcing'
+    replace: 'SELINUX=disabled'
+
+- name: Add device-mapper-persistent
+  yum:
+    name: device-mapper-persistent-data
+    state: present
+
+- name: Add base dependencies
+  yum:
+    name: "{{ packages }}"
+  vars:
+    packages:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+      - libseccomp
+      - epel-release
+      - e4fsprogs
+
+- name: Enable service firewalld
+  service:
+    name: firewalld
+    enabled: yes
+    state: started
+
+- name: Enable firewalld http https
+  firewalld:
+    service: '{{ item }}'
+    state: enabled
+    immediate: yes
+    permanent: yes
+  with_items:
+    - http
+    - https
+
+- name: Reload service firewalld
+  service:
+    name: postfix
+    enabled: yes
+    state: reloaded
+
+- name: Add docker repository
+  shell: yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+
+- name: Add docker
+  yum:
+    name: docker-ce
+    state: present
+
+- name: Add docker user perms
+  shell: usermod -aG docker vagrant
+
+- name: Enable service docker
+  service:
+    name: docker
+    enabled: yes
+    state: started
+
+- name: Teplate docker daemon.json
+  template:
+    src: daemon.json
+    dest: /etc/docker/daemon.json
+
+- name: Reload service docker
+  service:
+    name: docker
+    enabled: yes
+    state: reloaded
+
+- name: create /dev/sdb1 partiton
+  parted:
+    device: /dev/sdb
+    number: 1
+    state: present
+    part_end: 29GiB
+
+- name: Create gitlab data volume group
+  lvg:
+    vg: gitlab
+    pvs: /dev/sdb1
+    pesize: 28G
+
+- name: Create gitlab data logical volume
+  lvol:
+    vg: gitlab
+    lv: data01
+    size: 15G
+
+- name: Add ext4fs on gitlab data partition
+  shell: mkfs.ext4 /dev/mapper/gitlab-data01
+
+- name: Mount gitbal data read-write
+  mount:
+    path: /gitlab/data
+    src: /dev/mapper/gitlab-data01
+    fstype: ext4
+    opts: rw,auto
+    state: present
+
+# Add gitlab
+- name: Add gitlab dependencies
+  yum:
+    name: "{{ packages }}"
+  vars:
+    packages:
+      - curl
+      - policycoreutils-python
+      - postfix
+
+- name: Enable service ssh
+  service:
+    name: sshd
+    enabled: yes
+    state: started
+
+- name: Enable service postfix
+  service:
+    name: postfix
+    enabled: yes
+    state: started
+
+- name: Add gitlab scripts
+  get_url:
+    url: https://packages.gitlab.com/install/repositories/gitlab/gitlab-ce/script.rpm.sh
+    dest: /tmp/gitlab.sh
+
+- name: Run gitlab scripts
+  shell: /bin/bash /tmp/gitlab.sh
+
+- name: Add gitlab env EXTERNAL_URL
+  lineinfile:
+    path: /etc/bashrc
+    regexp: '^EXTERNAL_URL='
+    line: 'EXTERNAL_URL="http://{{ gitlab_ns }}"'
+
+- name: Add gitlab-ce
+  yum:
+    name: gitlab-ce
+
+- name: Add gitlab ssl directory
+  file:
+    path: /etc/gitlab/ssl
+    state: directory
+
+- name: Add gitlab openssl key
+  template:
+    src: server.key
+    dest: /etc/gitlab/ssl/{{ gitlab_ns }}.key
+
+- name: Add gitlab openssl cert
+  template:
+    src: server.crt
+    dest: /etc/gitlab/ssl/{{ gitlab_ns }}.crt
+
+- name: Add gitlab configs
+  template:
+    src: gitlab.rb
+    dest: /etc/gitlab/gitlab.rb
+
+- name: Add docker ssl directory
+  file:
+    path: /etc/docker/certs.d/{{gitlab_ns }}:{{ gitlab_registry_port }}/
+    state: directory
+
+- name: Add docker ssl key
+  template:
+    src: server.crt
+    dest: /etc/docker/certs.d/{{gitlab_ns }}:{{ gitlab_registry_port }}/ca.crt
+
+- name: Reload service firewalld
+  service:
+    name: postfix
+    enabled: yes
+    state: reloaded
+
+- name: Reload gitlab
+  shell: gitlab-ctl reconfigure && gitlab-ctl restart
+
+docker pull alpine
+docker tag alpine gitlab.domain.local:4567/root/test-project/alpine:latest
+docker push gitlab.domain.local:4567/root/test-project/alpine:latest
+
+
+
+# - name: Add gitlab env EXTERNAL_URL
+#   lineinfile:
+#     path: /etc/gitlab/gitlab.rb
+#     regexp: "^registry_external_url 'https://:<PORT>'"
+#     line: 'EXTERNAL_URL="http://{{ gitlab_ns }}"'
+#

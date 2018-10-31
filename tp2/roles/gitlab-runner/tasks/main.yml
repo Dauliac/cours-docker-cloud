@@ -1,0 +1,16 @@
+---
+
+- name: Add gitlab-runner scripts
+  get_url:
+    url: https://packages.gitlab.com/install/repositories/runner/gitlab-runner/script.rpm.sh
+    dest: /tmp/gitlab-runner.sh
+
+- name: Run gitlab-runner scripts
+  shell: /bin/bash /tmp/gitlab-runner.sh
+
+- name: Add gitlab-runner
+  yum:
+    name: gitlab-runner-10.0.0-1
+
+- name: Add gitlab-runner cert
+  shell: gitlab-runner register --tls-ca-file /etc/gitlab/ssl/{{ gitlab_ns }}.crt

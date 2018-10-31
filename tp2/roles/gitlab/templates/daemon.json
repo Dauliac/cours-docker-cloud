@@ -1,0 +1,4 @@
+{
+    "storage-driver": "devicemapper",
+    "data-root": "{{ gitlab_docker_storage }}"
+}
