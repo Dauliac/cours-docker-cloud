@@ -63,7 +63,7 @@ team==1.0
 terminaltables==3.1.0
 traitlets==4.3.2
 trash-cli==0.17.1.14
-urllib3==1.23
+urllib3==1.26.5
 virtualenv==16.0.0
 virtualenv-clone==0.3.0
 wcwidth==0.1.7
