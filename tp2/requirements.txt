@@ -30,7 +30,7 @@ msgpack==0.5.6
 mycli==1.18.0
 notmuch==0.27
 packaging==18.0
-paramiko==2.4.2
+paramiko==2.10.1
 parso==0.3.1
 pdftotext==2.1.0
 pexpect==4.6.0
